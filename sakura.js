@@ -111,6 +111,9 @@ var gl;
 var sceneStandBy = false;
 var animating = true;
 
+// 添加实例存储
+const instances = new Map();
+
 // Time info
 var timeInfo = {
     'start': 0,
@@ -127,7 +130,12 @@ var renderSpec = {
     'array': new Float32Array(3),
     'halfWidth': 0,
     'halfHeight': 0,
-    'halfArray': new Float32Array(3)
+    'halfArray': new Float32Array(3),
+    'mainRT': null,
+    'wFullRT0': null,
+    'wFullRT1': null,
+    'wHalfRT0': null,
+    'wHalfRT1': null
 };
 
 renderSpec.setSize = function(w, h) {
@@ -152,53 +160,93 @@ function deleteRenderTarget(rt) {
 }
 
 function createRenderTarget(w, h) {
-    var ret = {
-        'width': w,
-        'height': h,
-        'sizeArray': new Float32Array([w, h, w / h]),
-        'dtxArray': new Float32Array([1.0 / w, 1.0 / h])
-    };
-    ret.frameBuffer = gl.createFramebuffer();
-    ret.renderBuffer = gl.createRenderbuffer();
-    ret.texture = gl.createTexture();
+    try {
+        var ret = {
+            'width': w,
+            'height': h,
+            'sizeArray': new Float32Array([w, h, w / h]),
+            'dtxArray': new Float32Array([1.0 / w, 1.0 / h])
+        };
 
-    gl.bindTexture(gl.TEXTURE_2D, ret.texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        // 创建帧缓冲区
+        ret.frameBuffer = gl.createFramebuffer();
+        if (!ret.frameBuffer) throw new Error('Failed to create frameBuffer');
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, ret.frameBuffer);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ret.texture, 0);
+        // 创建渲染缓冲区
+        ret.renderBuffer = gl.createRenderbuffer();
+        if (!ret.renderBuffer) throw new Error('Failed to create renderBuffer');
 
-    gl.bindRenderbuffer(gl.RENDERBUFFER, ret.renderBuffer);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, ret.renderBuffer);
+        // 创建纹理
+        ret.texture = gl.createTexture();
+        if (!ret.texture) throw new Error('Failed to create texture');
 
-    gl.bindTexture(gl.TEXTURE_2D, null);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        // 配置纹理
+        gl.bindTexture(gl.TEXTURE_2D, ret.texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
 
-    return ret;
+        // 配置帧缓冲区
+        gl.bindFramebuffer(gl.FRAMEBUFFER, ret.frameBuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ret.texture, 0);
+
+        // 配置渲染缓冲区
+        gl.bindRenderbuffer(gl.RENDERBUFFER, ret.renderBuffer);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, ret.renderBuffer);
+
+        // 检查帧缓冲区状态
+        var status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        if (status !== gl.FRAMEBUFFER_COMPLETE) {
+            throw new Error('Framebuffer is not complete: ' + status);
+        }
+
+        // 清理绑定
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        return ret;
+    } catch (e) {
+        console.error('Failed to create render target:', e);
+        // 清理已创建的资源
+        if (ret) {
+            if (ret.frameBuffer) gl.deleteFramebuffer(ret.frameBuffer);
+            if (ret.renderBuffer) gl.deleteRenderbuffer(ret.renderBuffer);
+            if (ret.texture) gl.deleteTexture(ret.texture);
+        }
+        return null;
+    }
 }
 
 function setViewports() {
-    renderSpec.setSize(gl.canvas.width, gl.canvas.height);
-    
-    gl.clearColor(0.2, 0.2, 0.5, 1.0);
-    gl.viewport(0, 0, renderSpec.width, renderSpec.height);
-    
-    var rtfunc = function(rtname, rtw, rth) {
-        var rt = renderSpec[rtname];
-        if (rt) deleteRenderTarget(rt);
-        renderSpec[rtname] = createRenderTarget(rtw, rth);
-    };
-    rtfunc('mainRT', renderSpec.width, renderSpec.height);
-    rtfunc('wFullRT0', renderSpec.width, renderSpec.height);
-    rtfunc('wFullRT1', renderSpec.width, renderSpec.height);
-    rtfunc('wHalfRT0', renderSpec.halfWidth, renderSpec.halfHeight);
-    rtfunc('wHalfRT1', renderSpec.halfWidth, renderSpec.halfHeight);
+    try {
+        renderSpec.setSize(gl.canvas.width, gl.canvas.height);
+        
+        gl.clearColor(0.2, 0.2, 0.5, 1.0);
+        gl.viewport(0, 0, renderSpec.width, renderSpec.height);
+        
+        var rtfunc = function(rtname, rtw, rth) {
+            var rt = renderSpec[rtname];
+            if (rt) deleteRenderTarget(rt);
+            var newRt = createRenderTarget(rtw, rth);
+            if (!newRt) throw new Error(`Failed to create render target: ${rtname}`);
+            renderSpec[rtname] = newRt;
+        };
+
+        rtfunc('mainRT', renderSpec.width, renderSpec.height);
+        rtfunc('wFullRT0', renderSpec.width, renderSpec.height);
+        rtfunc('wFullRT1', renderSpec.width, renderSpec.height);
+        rtfunc('wHalfRT0', renderSpec.halfWidth, renderSpec.halfHeight);
+        rtfunc('wHalfRT1', renderSpec.halfWidth, renderSpec.halfHeight);
+
+        return true;
+    } catch (e) {
+        console.error('Failed to set viewports:', e);
+        return false;
+    }
 }
 
 // Camera and projection settings
@@ -218,10 +266,17 @@ var camera = {
 
 // Event handlers
 function onResize(e) {
-    makeCanvasFullScreen(document.getElementById("sakura"));
-    setViewports();
-    if (sceneStandBy) {
-        initScene();
+    // 获取当前活动的 canvas
+    const activeCanvas = document.querySelector('canvas[id^="sakura-"]');
+    if (activeCanvas && instances.has(activeCanvas.id)) {
+        const instance = instances.get(activeCanvas.id);
+        gl = instance.gl;
+        renderSpec = instance.renderSpec;
+        makeCanvasFullScreen(activeCanvas);
+        setViewports();
+        if (sceneStandBy) {
+            initScene();
+        }
     }
 }
 
@@ -245,29 +300,6 @@ function makeCanvasFullScreen(canvas) {
     canvas.width = fullw;
     canvas.height = fullh;
 }
-
-// 确保代码在页面加载完成后执行
-window.addEventListener('load', function(e) {
-    var canvas = document.getElementById("sakura");
-    try {
-        makeCanvasFullScreen(canvas);
-        gl = canvas.getContext('experimental-webgl');
-    } catch (e) {
-        alert("WebGL not supported." + e);
-        console.error(e);
-        return;
-    }
-
-    window.addEventListener('resize', onResize);
-
-    setViewports();
-    createScene();
-    initScene();
-
-    timeInfo.start = new Date();
-    timeInfo.prev = timeInfo.start;
-    animate();
-});
 
 //set window.requestAnimationFrame
 (function(w, r) {
@@ -738,30 +770,57 @@ function initScene() {
 }
 
 function renderScene() {
-    //draw
-    Matrix44.loadLookAt(camera.matrix, camera.position, camera.lookat, camera.up);
+    try {
+        // 检查 WebGL 上下文和动画状态
+        if (!gl || !animating) return;
 
-    gl.enable(gl.DEPTH_TEST);
+        // 检查渲染目标
+        if (!renderSpec.mainRT || !renderSpec.mainRT.frameBuffer) return;
 
-    //gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, renderSpec.mainRT.frameBuffer);
-    gl.viewport(0, 0, renderSpec.mainRT.width, renderSpec.mainRT.height);
-    gl.clearColor(0.005, 0, 0.05, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        // 设置相机矩阵
+        Matrix44.loadLookAt(camera.matrix, camera.position, camera.lookat, camera.up);
 
-    renderBackground();
-    renderPointFlowers();
-    renderPostProcess();
+        // 启用深度测试
+        gl.enable(gl.DEPTH_TEST);
+
+        // 绑定主渲染目标
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderSpec.mainRT.frameBuffer);
+        gl.viewport(0, 0, renderSpec.mainRT.width, renderSpec.mainRT.height);
+        gl.clearColor(0.005, 0, 0.05, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // 渲染背景和樱花
+        renderBackground();
+        renderPointFlowers();
+        renderPostProcess();
+    } catch (e) {
+        console.error('Failed to render scene:', e);
+        // 如果渲染失败，停止动画
+        animating = false;
+    }
 }
 
 function animate() {
-    var curdate = new Date();
-    timeInfo.elapsed = (curdate - timeInfo.start) / 1000.0;
-    timeInfo.delta = (curdate - timeInfo.prev) / 1000.0;
-    timeInfo.prev = curdate;
+    try {
+        // 检查动画状态
+        if (!animating) return;
 
-    if (animating) requestAnimationFrame(animate);
-    render();
+        var curdate = new Date();
+        timeInfo.elapsed = (curdate - timeInfo.start) / 1000.0;
+        timeInfo.delta = (curdate - timeInfo.prev) / 1000.0;
+        timeInfo.prev = curdate;
+
+        // 渲染场景
+        renderScene();
+
+        // 继续动画循环
+        if (animating) {
+            requestAnimationFrame(animate);
+        }
+    } catch (e) {
+        console.error('Animation error:', e);
+        animating = false;
+    }
 }
 
 function render() {
@@ -844,4 +903,114 @@ function unuseShader(prog) {
         gl.disableVertexAttribArray(prog.attributes[attr]);
     }
     gl.useProgram(null);
-} 
+}
+
+// 将函数暴露到全局
+window.initScene = initScene;
+window.createScene = createScene;
+window.animate = animate;
+
+// 修改 initializeWebGL 函数
+window.initializeWebGL = function(canvas) {
+    try {
+        // 设置画布大小
+        makeCanvasFullScreen(canvas);
+        
+        // 初始化 WebGL
+        gl = canvas.getContext('experimental-webgl');
+        if (!gl) throw new Error('WebGL not supported');
+
+        // 初始化渲染规格
+        renderSpec.setSize(canvas.width, canvas.height);
+        
+        // 重置动画状态
+        animating = true;
+        sceneStandBy = false;
+        
+        // 创建渲染目标
+        if (!setViewports()) {
+            throw new Error('Failed to set viewports');
+        }
+        
+        // 初始化场景
+        createScene();
+        initScene();
+
+        // 重置时间信息
+        timeInfo.start = new Date();
+        timeInfo.prev = timeInfo.start;
+        timeInfo.delta = 0;
+        timeInfo.elapsed = 0;
+
+        // 添加窗口大小变化监听
+        window.addEventListener('resize', onResize);
+
+        return true;
+    } catch (e) {
+        console.error('Failed to initialize WebGL:', e);
+        return false;
+    }
+};
+
+// 修改清理函数
+window.cleanupWebGL = function(canvasId) {
+    try {
+        const instance = instances.get(canvasId);
+        if (!instance) return;
+
+        // 停止动画
+        instance.animating = false;
+
+        // 等待一帧以确保所有渲染调用都完成
+        requestAnimationFrame(() => {
+            // 设置当前上下文
+            gl = instance.gl;
+            renderSpec = instance.renderSpec;
+
+            if (!gl) return;
+
+            // 清理渲染目标
+            if (renderSpec) {
+                if (renderSpec.mainRT) deleteRenderTarget(renderSpec.mainRT);
+                if (renderSpec.wFullRT0) deleteRenderTarget(renderSpec.wFullRT0);
+                if (renderSpec.wFullRT1) deleteRenderTarget(renderSpec.wFullRT1);
+                if (renderSpec.wHalfRT0) deleteRenderTarget(renderSpec.wHalfRT0);
+                if (renderSpec.wHalfRT1) deleteRenderTarget(renderSpec.wHalfRT1);
+            }
+
+            // 移除 resize 监听器
+            if (instance.resizeHandler) {
+                window.removeEventListener('resize', instance.resizeHandler);
+            }
+
+            // 清理 WebGL 上下文
+            const loseContext = gl.getExtension('WEBGL_lose_context');
+            if (loseContext) {
+                loseContext.loseContext();
+            }
+
+            // 从实例映射中移除
+            instances.delete(canvasId);
+        });
+    } catch (e) {
+        console.error('Failed to cleanup WebGL:', e);
+    }
+};
+
+// 修改动画函数
+window.animate = function(canvasId) {
+    if (!gl || !animating) return;
+
+    try {
+        var curdate = new Date();
+        timeInfo.elapsed = (curdate - timeInfo.start) / 1000.0;
+        timeInfo.delta = (curdate - timeInfo.prev) / 1000.0;
+        timeInfo.prev = curdate;
+
+        // 渲染场景
+        renderScene();
+    } catch (e) {
+        console.error('Animation error:', e);
+        animating = false;
+    }
+}; 
