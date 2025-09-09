@@ -1,0 +1,14 @@
+# GitHub Pages 配置文件
+title: Vue + React Hybrid Demo
+description: 一个vue和react语法对比的demo
+theme: jekyll-theme-minimal
+
+# 构建设置
+plugins:
+  - jekyll-feed
+
+# 排除文件（如果需要）
+exclude:
+  - README.md
+  - .github
+  - .gitignore
