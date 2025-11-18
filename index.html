@@ -1,16 +1,54 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vue + React Hybrid Demo</title><style>* {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-            background-color: #f5f5f5;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }</style><script defer="defer" src="bundle.js"></script></head><body><div id="app"></div></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>体重饮食记录</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+      line-height: 1.6;
+      /* 修复iOS安全区域 */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    
+    #app {
+      background: rgba(255, 255, 255, 0.95);
+      min-height: 100vh;
+      backdrop-filter: blur(10px);
+      /* 修复iOS安全区域 */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+      /* 确保内容区域填满可视区域 */
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    /* 修复底部导航栏在iPhone上的显示 */
+    @supports (padding: max(0px)) {
+      .bottom-nav {
+        /* 定位在可视区域底部 */
+        bottom: max(0px, env(safe-area-inset-bottom));
+        height: 65px;
+        /* 不需要额外的padding-bottom */
+        padding-bottom: 0;
+      }
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-efb96c37.js"></script>
+  <link rel="stylesheet" href="/assets/index-242c6b54.css">
+</head>
+<body>
+  <div id="app"></div>
+  
+</body>
+</html>
