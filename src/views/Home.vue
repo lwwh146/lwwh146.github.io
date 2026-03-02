@@ -1,0 +1,320 @@
+<template>
+  <div class="home">
+    <div class="header">
+      <h1>体重饮食记录</h1>
+      <div class="date">{{ currentDate }}</div>
+    </div>
+    
+    <div class="stats-container">
+      <div class="stat-card">
+        <div class="stat-icon">⚖️</div>
+        <div class="stat-info">
+          <div class="stat-value">{{ latestWeight?latestWeight+'斤': '--' }}</div>
+          <div class="stat-label">最新体重</div>
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-icon">🍽️</div>
+        <div class="stat-info">
+          <div class="stat-value">{{ todayMeals }}</div>
+          <div class="stat-label">今日餐数</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="recent-section">
+      <h2>最近记录</h2>
+      
+      <div class="recent-weight" v-if="recentWeight.length > 0">
+        <h3>体重记录</h3>
+        <div class="weight-list">
+          <div v-for="record in recentWeight" :key="record.id" class="weight-item">
+            <div class="weight-info">
+              <span class="weight-value">{{ record.weight }} 斤</span>
+              <span class="weight-date">{{ formatDate(record.date) }}</span>
+            </div>
+            <div class="weight-note" v-if="record.note">{{ record.note }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="recent-diet" v-if="recentDiet.length > 0">
+        <h3>饮食记录</h3>
+        <div class="diet-list">
+          <div v-for="record in recentDiet" :key="record.id" class="diet-item">
+            <div class="diet-info">
+              <span class="meal-type">{{ getMealTypeLabel(record.mealType) }}</span>
+              <span class="food">{{ record.food }}</span>
+              <span class="calories" v-if="record.calories">{{ record.calories }} kcal</span>
+            </div>
+            <div class="diet-date">{{ formatDate(record.date) }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty-state" v-if="recentWeight.length === 0 && recentDiet.length === 0">
+        <div class="empty-icon">📝</div>
+        <p>还没有记录，开始记录你的体重和饮食吧！</p>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import storage from '../utils/storage.js'
+
+export default {
+  name: 'Home',
+  data() {
+    return {
+      currentDate: '',
+      recentWeight: [],
+      recentDiet: [],
+      latestWeight: null,
+      todayMeals: 0
+    }
+  },
+  mounted() {
+    this.loadData()
+    this.updateDate()
+    setInterval(this.updateDate, 60000) // 每分钟更新日期
+  },
+  methods: {
+    loadData() {
+      // 获取最近5条体重记录
+      const weightRecords = storage.getWeightRecords()
+      this.recentWeight = weightRecords
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 5)
+      
+      // 获取最新体重
+      if (weightRecords.length > 0) {
+        const sortedWeights = weightRecords.sort((a, b) => new Date(b.date) - new Date(a.date))
+        this.latestWeight = sortedWeights[0].weight
+      }
+
+      // 获取最近5条饮食记录
+      const dietRecords = storage.getDietRecords()
+      this.recentDiet = dietRecords
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 5)
+
+      // 获取今日餐数
+      const today = new Date().toISOString().split('T')[0]
+      const todayDietRecords = storage.getDietRecordsByDate(today)
+      this.todayMeals = todayDietRecords.length
+    },
+    updateDate() {
+      const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }
+      this.currentDate = new Date().toLocaleDateString('zh-CN', options)
+    },
+    formatDate(dateStr) {
+      const date = new Date(dateStr)
+      const today = new Date()
+      const yesterday = new Date(today)
+      yesterday.setDate(yesterday.getDate() - 1)
+      
+      if (date.toDateString() === today.toDateString()) {
+        return '今天'
+      } else if (date.toDateString() === yesterday.toDateString()) {
+        return '昨天'
+      } else {
+        return `${date.getMonth() + 1}月${date.getDate()}日`
+      }
+    },
+    getMealTypeLabel(mealType) {
+      const labels = {
+        breakfast: '早餐',
+        lunch: '午餐',
+        dinner: '晚餐',
+        snack: '加餐'
+      }
+      return labels[mealType] || mealType
+    }
+  }
+}
+</script>
+
+<style scoped>
+.home {
+  padding: 20px 20px 65px;
+  max-width: 600px;
+  /* margin: 0 auto; */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.header h1 {
+  font-size: 24px;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.date {
+  font-size: 14px;
+  color: #666;
+}
+
+.stats-container {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.stat-card {
+  width: 50%;
+  flex: 1;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+.stat-icon {
+  font-size: 26px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: bold;
+  color: #333;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+  opacity: 0.8;
+}
+
+.recent-section h2 {
+  font-size: 20px;
+  color: #333;
+  margin-bottom: 20px;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.recent-section h3 {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.weight-item, .diet-item {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.weight-item:hover, .diet-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.weight-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.weight-value {
+  font-weight: bold;
+  color: #007aff;
+  font-size: 18px;
+  text-shadow: 0 1px 2px rgba(0, 122, 255, 0.2);
+}
+
+.weight-date {
+  font-size: 12px;
+  color: #666;
+  opacity: 0.8;
+}
+
+.weight-note {
+  font-size: 12px;
+  color: #666;
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  border-left: 3px solid #007aff;
+}
+
+.diet-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.meal-type {
+  background: linear-gradient(135deg, #007aff 0%, #0056b3 100%);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.food {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.calories {
+  font-size: 12px;
+  color: #666;
+  background: rgba(255, 193, 7, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.diet-date {
+  font-size: 12px;
+  color: #666;
+  opacity: 0.8;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+</style>
