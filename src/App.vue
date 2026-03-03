@@ -12,18 +12,18 @@
         <div class="nav-icon">⚖️</div>
         <span>体重</span>
       </router-link>
-      <router-link to="/diet" class="nav-item" active-class="active">
+      <!-- <router-link to="/diet" class="nav-item" active-class="active">
         <div class="nav-icon">🍽️</div>
         <span>饮食</span>
-      </router-link>
+      </router-link> -->
       <router-link to="/chart" class="nav-item" active-class="active">
         <div class="nav-icon">📊</div>
         <span>统计</span>
       </router-link>
-      <router-link to="/data" class="nav-item" active-class="active">
+      <!-- <router-link to="/data" class="nav-item" active-class="active">
         <div class="nav-icon">💾</div>
         <span>数据</span>
-      </router-link>
+      </router-link> -->
     </nav>
   </div>
 </template>
