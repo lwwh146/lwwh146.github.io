@@ -1,534 +1,169 @@
 <template>
-  <div class="weight-record">
-    <div class="header">
-      <h1>体重记录</h1>
-    </div>
+  <div class="weight-record-container">
+    <header class="page-header">
+      <h1>记录体重</h1>
+      <p class="subtitle">记录每一天的微小进步</p>
+    </header>
 
-    <div class="add-record">
-      <div class="form-group">
-        <label>日期</label>
-        <input
-          type="date"
-          v-model="newRecord.date"
-          :max="maxDate"
-          class="form-input"
-        />
-      </div>
-
-      <div class="form-group">
-        <label>体重 (斤)</label>
-        <input
-          type="number"
-          v-model="newRecord.weight"
-          step="0.1"
-          placeholder="请输入体重"
-          class="form-input"
-        />
-      </div>
-
-      <div class="form-group">
-        <label>备注</label>
-        <textarea
-          v-model="newRecord.note"
-          placeholder="可选：记录今日状态、饮食情况等"
-          class="form-textarea"
-          rows="3"
-        ></textarea>
-      </div>
-
-      <button @click="addRecord" class="add-btn" :disabled="!canAdd">
-        添加记录
-      </button>
-    </div>
-
-    <div class="records-list">
-      <h2>历史记录</h2>
-
-      <div class="filter-tabs">
-        <button
-          @click="filterType = 'all'"
-          :class="{ active: filterType === 'all' }"
-          class="filter-btn"
-        >
-          全部
-        </button>
-        <button
-          @click="filterType = 'recent7'"
-          :class="{ active: filterType === 'recent7' }"
-          class="filter-btn"
-        >
-          最近7天
-        </button>
-        <button
-          @click="filterType = 'recent30'"
-          :class="{ active: filterType === 'recent30' }"
-          class="filter-btn"
-        >
-          最近30天
-        </button>
-      </div>
-
-      <div class="weight-cards">
-        <div
-          v-for="record in filteredRecords"
-          :key="record.id"
-          class="weight-card"
-        >
-          <div class="card-header">
-            <div class="date-info">
-              <div class="date">{{ formatDate(record.date) }}</div>
-              <div class="time">{{ formatTime(record.created_at) }}</div>
-            </div>
-            <button @click="deleteRecord(record.id)" class="delete-btn">
-              🗑️
-            </button>
-          </div>
-
-          <div class="weight-display">
-            <span class="weight-value">{{ record.weight }}</span>
-            <span class="weight-unit">斤</span>
-          </div>
-
-          <div class="weight-change" v-if="record.weightChange">
-            <span
-              :class="[
-                'change-value',
-                record.weightChange > 0 ? 'increase' : 'decrease',
-              ]"
-            >
-              {{ record.weightChange > 0 ? "+" : ""
-              }}{{ record.weightChange.toFixed(1) }} 斤
-            </span>
-            <span class="change-label">较上次</span>
-          </div>
-
-          <div class="note" v-if="record.note">
-            {{ record.note }}
+    <section class="input-card">
+      <div class="form-row">
+        <div class="input-group flex-2">
+          <label>日期</label>
+          <input type="date" v-model="newRecord.date" :max="maxDate" :disabled="loading" />
+        </div>
+        <div class="input-group flex-3">
+          <label>体重 (斤)</label>
+          <div class="weight-input-wrapper">
+            <input type="number" v-model="newRecord.weight" step="0.1" placeholder="0.0" :disabled="loading" />
+            <span class="unit">斤</span>
           </div>
         </div>
       </div>
 
-      <div class="empty-state" v-if="filteredRecords.length === 0">
-        <div class="empty-icon">📊</div>
-        <p>
-          {{ filterType === "all" ? "还没有体重记录" : "该时间段没有记录" }}
-        </p>
+      <div class="input-group">
+        <label>心情/备注</label>
+        <textarea v-model="newRecord.note" placeholder="今天状态如何？(选填)" :disabled="loading"></textarea>
       </div>
-    </div>
+
+      <button @click="addRecord" class="submit-btn" :disabled="!canAdd || loading">
+        <span v-if="loading" class="btn-spinner"></span>
+        {{ loading ? '同步中...' : '确认录入' }}
+      </button>
+    </section>
+
+    <section class="history-section">
+      <div class="section-title">
+        <h2>历史记录</h2>
+        <span class="count">共 {{ records.length }} 条</span>
+      </div>
+
+      <div v-if="records.length > 0" class="timeline" :class="{ 'list-loading': loading }">
+        <div v-for="record in records" :key="record.id" class="timeline-item">
+          <div class="time-point"></div>
+          <div class="record-card">
+            <div class="card-left">
+              <span class="res-weight">{{ record.weight }}</span>
+              <span class="res-unit">斤</span>
+            </div>
+            <div class="card-main">
+              <div class="res-date">{{ formatDate(record.date) }}</div>
+              <div class="res-note" v-if="record.note">{{ record.note }}</div>
+            </div>
+            <button v-if="!loading" class="delete-icon" @click="deleteRecord(record.id)">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="!loading" class="empty-holder">
+        <p>暂无记录，开始你的第一次录入吧</p>
+      </div>
+    </section>
   </div>
 </template>
 
 <script>
-// import storage from '../utils/storage.js'
 import { supabase } from "../supabase.js";
 
 export default {
-  name: "WeightRecord",
   data() {
     return {
+      loading: false,
       newRecord: {
-        date: new Date().toISOString().split("T")[0],
-        weight: "",
-        note: "",
+        date: new Date().toISOString().split('T')[0],
+        weight: '',
+        note: ''
       },
       records: [],
-      filterType: "all",
-      maxDate: new Date().toISOString().split("T")[0],
+      maxDate: new Date().toISOString().split('T')[0]
     };
   },
   computed: {
     canAdd() {
-      return this.newRecord.weight && parseFloat(this.newRecord.weight) > 0;
-    },
-    filteredRecords() {
-      let filtered = [...this.records];
-
-      // 按日期倒序排列
-      filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-      // 计算体重变化
-      filtered.forEach((record, index) => {
-        if (index < filtered.length - 1) {
-          const prevRecord = filtered[index + 1];
-          record.weightChange = record.weight - prevRecord.weight;
-        } else {
-          record.weightChange = null;
-        }
-      });
-
-      // 应用时间过滤
-      if (this.filterType === "recent7") {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        filtered = filtered.filter(
-          (record) => new Date(record.date) >= sevenDaysAgo,
-        );
-      } else if (this.filterType === "recent30") {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        filtered = filtered.filter(
-          (record) => new Date(record.date) >= thirtyDaysAgo,
-        );
-      }
-
-      return filtered;
-    },
+      return this.newRecord.weight > 0 && this.newRecord.date;
+    }
   },
-  mounted() {
-    this.loadRecords();
+  async mounted() {
+    await this.fetchRecords();
   },
   methods: {
-    async loadRecords() {
+    async fetchRecords() {
       const { data, error } = await supabase
-        .from('weight_logs')
-        .select('*')
-        .order('date', { ascending: false }) // 按日期倒序排列
-
-      if (error) {
-        console.error('读取失败:', error.message)
-      } else {
-        this.records = data
-      }
+        .from("weight_logs")
+        .select("*")
+        .order("date", { ascending: false });
+      if (!error) this.records = data;
     },
     async addRecord() {
-      console.log("准备提交数据:", this.newRecord); // 添加这行
-      // 注意：这里要加 async
-      if (!this.canAdd) return;
-
+      this.loading = true;
       try {
-        // 2. 构造要存入数据库的对象（字段名必须和 Supabase 表里一致）
-        const { data, error } = await supabase.from("weight_logs").insert([
-          {
-            date: this.newRecord.date,
-            weight: parseFloat(this.newRecord.weight),
-            note: this.newRecord.note,
-          },
-        ]);
-
-        if (error) throw error;
-
-        // 3. 重置表单
-        this.newRecord = {
-          date: new Date().toISOString().split("T")[0],
-          weight: "",
-          note: "",
-        };
-
-        // 4. 重新加载数据
-        await this.loadRecords();
-        this.showToast("数据已同步至云端");
-      } catch (err) {
-        console.error("上传失败:", err.message);
-        this.showToast("上传失败: " + err.message);
+        const { error } = await supabase.from("weight_logs").insert([this.newRecord]);
+        if (!error) {
+          this.newRecord.weight = '';
+          this.newRecord.note = '';
+          await this.fetchRecords();
+        }
+      } finally {
+        this.loading = false;
       }
     },
     async deleteRecord(id) {
-  if (confirm('确定要从云端删除这条记录吗？')) {
-    const { error } = await supabase
-      .from('weight_logs')
-      .delete()
-      .eq('id', id) // 匹配 ID 删除
-
-    if (!error) {
-      await this.loadRecords()
-      this.showToast('记录已从云端移除')
-    }
-  }
-},
-    formatDate(dateStr) {
-      const date = new Date(dateStr);
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      if (date.toDateString() === today.toDateString()) {
-        return "今天";
-      } else if (date.toDateString() === yesterday.toDateString()) {
-        return "昨天";
-      } else {
-        return `${date.getMonth() + 1}月${date.getDate()}日`;
+      if (confirm("确定删除这条记录吗？")) {
+        this.loading = true;
+        try {
+          const { error } = await supabase.from("weight_logs").delete().eq("id", id);
+          if (!error) await this.fetchRecords();
+        } finally {
+          this.loading = false;
+        }
       }
     },
-    formatTime(timeStr) {
-      const date = new Date(timeStr);
-      return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
-    },
-    showToast(message) {
-      // 简单的toast提示实现
-      const toast = document.createElement("div");
-      toast.className = "toast";
-      toast.textContent = message;
-      toast.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        z-index: 10000;
-        font-size: 14px;
-      `;
-      document.body.appendChild(toast);
-
-      setTimeout(() => {
-        document.body.removeChild(toast);
-      }, 2000);
-    },
-  },
+    formatDate(dateStr) {
+      const d = new Date(dateStr);
+      return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+    }
+  }
 };
 </script>
 
 <style scoped>
-.weight-record {
-  padding: 20px 20px 70px;
-  max-width: 600px;
-  /* margin: 0 auto; */
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
+.weight-record-container { padding: 24px 20px; background-color: #f2f2f7; min-height: 100vh; }
+.page-header { margin-bottom: 24px; }
+.page-header h1 { font-size: 24px; color: #1c1c1e; }
+.page-header .subtitle { font-size: 14px; color: #8e8e93; margin-top: 4px; }
 
-.header {
-  text-align: center;
-  margin-bottom: 30px;
-}
+/* 输入卡片 */
+.input-card { background: white; border-radius: 20px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 30px; }
+.form-row { display: flex; gap: 15px; margin-bottom: 15px; }
+.flex-2 { flex: 2; }
+.flex-3 { flex: 3; }
+.input-group { margin-bottom: 15px; }
+.input-group label { display: block; font-size: 13px; color: #8e8e93; margin-bottom: 6px; padding-left: 4px; }
 
-.header h1 {
-  font-size: 24px;
-  color: #333;
-}
+input, textarea { width: 100%; padding: 12px 16px; background: #f2f2f7; border: 2px solid transparent; border-radius: 12px; font-size: 16px; color: #1c1c1e; transition: all 0.2s; }
+input:focus, textarea:focus { background: white; border-color: #007aff; outline: none; }
+input:disabled, textarea:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.add-record {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.9) 0%,
-    rgba(255, 255, 255, 0.7) 100%
-  );
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 30px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
+.weight-input-wrapper { position: relative; }
+.weight-input-wrapper .unit { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: #8e8e93; }
 
-.form-group {
-  margin-bottom: 20px;
-}
+.submit-btn { width: 100%; padding: 16px; background: #007aff; color: white; border: none; border-radius: 14px; font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.submit-btn:disabled { opacity: 0.5; }
 
-.form-group label {
-  display: block;
-  font-size: 14px;
-  color: #333;
-  margin-bottom: 8px;
-  font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
+.btn-spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-.form-input,
-.form-textarea {
-  width: 100%;
-  padding: 14px;
-  border: 2px solid rgba(0, 122, 255, 0.1);
-  border-radius: 12px;
-  font-size: 16px;
-  font-family: inherit;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(5px);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.form-input:focus,
-.form-textarea:focus {
-  outline: none;
-  border-color: #007aff;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
-}
-
-.add-btn {
-  width: 100%;
-  padding: 16px;
-  background: linear-gradient(135deg, #007aff 0%, #0056b3 100%);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 20px rgba(0, 122, 255, 0.3);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-.add-btn:disabled {
-  background: linear-gradient(135deg, #ccc 0%, #999 100%);
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.add-btn:not(:disabled):hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 122, 255, 0.4);
-}
-
-.add-btn:not(:disabled):active {
-  transform: translateY(0);
-}
-
-.records-list h2 {
-  font-size: 18px;
-  color: #333;
-  margin-bottom: 15px;
-}
-
-.filter-tabs {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.filter-btn {
-  flex: 1;
-  padding: 10px 16px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.9) 0%,
-    rgba(255, 255, 255, 0.7) 100%
-  );
-  backdrop-filter: blur(10px);
-  border: 2px solid rgba(0, 122, 255, 0.1);
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.filter-btn.active {
-  background: linear-gradient(135deg, #007aff 0%, #0056b3 100%);
-  color: white;
-  border-color: #007aff;
-  box-shadow: 0 4px 15px rgba(0, 122, 255, 0.3);
-}
-
-.filter-btn:hover:not(.active) {
-  border-color: rgba(0, 122, 255, 0.3);
-  background: rgba(0, 122, 255, 0.05);
-}
-
-.weight-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.weight-card {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.9) 0%,
-    rgba(255, 255, 255, 0.7) 100%
-  );
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.weight-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.date-info .date {
-  font-size: 16px;
-  font-weight: 500;
-  color: #333;
-}
-
-.date-info .time {
-  font-size: 12px;
-  color: #666;
-  margin-top: 2px;
-}
-
-.delete-btn {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px;
-}
-
-.weight-display {
-  text-align: center;
-  margin-bottom: 8px;
-}
-
-.weight-value {
-  font-size: 32px;
-  font-weight: bold;
-  color: #007aff;
-}
-
-.weight-unit {
-  font-size: 16px;
-  color: #666;
-  margin-left: 4px;
-}
-
-.weight-change {
-  text-align: center;
-  margin-bottom: 8px;
-}
-
-.change-value {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.change-value.increase {
-  color: #ff3b30;
-}
-
-.change-value.decrease {
-  color: #34c759;
-}
-
-.change-label {
-  font-size: 12px;
-  color: #666;
-  margin-left: 4px;
-}
-
-.note {
-  font-size: 14px;
-  color: #666;
-  padding: 8px;
-  background: #f8f8f8;
-  border-radius: 6px;
-  margin-top: 8px;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: #666;
-}
-
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
+/* 列表 */
+.list-loading { opacity: 0.6; pointer-events: none; }
+.timeline { border-left: 2px solid #e5e5ea; margin-left: 10px; padding-left: 20px; transition: opacity 0.3s; }
+.timeline-item { position: relative; margin-bottom: 16px; }
+.time-point { position: absolute; left: -27px; top: 22px; width: 12px; height: 12px; background: #007aff; border-radius: 50%; border: 2px solid white; }
+.record-card { background: white; padding: 16px; border-radius: 16px; display: flex; align-items: center; position: relative; }
+.card-left { text-align: center; padding-right: 15px; border-right: 1px solid #f2f2f7; min-width: 70px; }
+.res-weight { font-size: 20px; font-weight: 700; color: #007aff; }
+.res-unit { font-size: 12px; color: #8e8e93; }
+.card-main { padding-left: 15px; flex: 1; }
+.res-date { font-size: 14px; color: #1c1c1e; font-weight: 500; }
+.res-note { font-size: 12px; color: #8e8e93; margin-top: 4px; }
+.delete-icon { position: absolute; top: 10px; right: 10px; background: none; border: none; color: #c7c7cc; font-size: 14px; padding: 5px; cursor: pointer; }
+.empty-holder { text-align: center; padding: 40px; color: #c7c7cc; }
 </style>

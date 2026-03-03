@@ -1,117 +1,133 @@
 <template>
   <div id="app">
-    <div class="container">
+    <main class="main-container" :class="{ 'has-footer': isLoggedIn }">
       <router-view />
-    </div>
-    <nav class="bottom-nav">
-      <router-link to="/" class="nav-item" active-class="active">
-        <div class="nav-icon">🏠</div>
-        <span>首页</span>
+    </main>
+
+    <nav v-if="isLoggedIn" class="tab-bar">
+      <router-link to="/home" class="tab-item">
+        <span class="icon">🏠</span>
+        <span class="label">首页</span>
       </router-link>
-      <router-link to="/weight" class="nav-item" active-class="active">
-        <div class="nav-icon">⚖️</div>
-        <span>体重</span>
+      <router-link to="/weight" class="tab-item">
+        <span class="icon">⚖️</span>
+        <span class="label">记录</span>
       </router-link>
-      <!-- <router-link to="/diet" class="nav-item" active-class="active">
-        <div class="nav-icon">🍽️</div>
-        <span>饮食</span>
-      </router-link> -->
-      <router-link to="/chart" class="nav-item" active-class="active">
-        <div class="nav-icon">📊</div>
-        <span>统计</span>
+      <router-link to="/chart" class="tab-item">
+        <span class="icon">📈</span>
+        <span class="label">统计</span>
       </router-link>
-      <!-- <router-link to="/data" class="nav-item" active-class="active">
-        <div class="nav-icon">💾</div>
-        <span>数据</span>
-      </router-link> -->
+      <router-link to="/profile" class="tab-item">
+        <span class="icon">👤</span>
+        <span class="label">我的</span>
+      </router-link>
     </nav>
   </div>
 </template>
 
 <script>
+import { supabase } from "./supabase.js";
+
 export default {
-  name: 'App'
-}
+  data() {
+    return {
+      isLoggedIn: false
+    };
+  },
+  created() {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      this.isLoggedIn = !!session;
+    });
+
+    supabase.auth.onAuthStateChange((event, session) => {
+      this.isLoggedIn = !!session;
+      if (event === 'SIGNED_OUT') {
+        this.$router.push('/login');
+      }
+    });
+  },
+  methods: {
+    async handleLogout() {
+      if (confirm("确定要退出登录吗？")) {
+        await supabase.auth.signOut();
+      }
+    }
+  }
+};
 </script>
 
 <style>
+
+/* 1. 强制所有元素使用 border-box 模型 */
+*, *::before, *::after {
+  box-sizing: border-box !important;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  overflow-x: hidden; /* 防止横向抖动 */
+  background-color: #f2f2f7;
+}
+
 #app {
+  width: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-.container {
+/* 2. 修正主容器 */
+.main-container {
+  width: 100%;
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  /* 确保内容区域填满可视区域，但不包括导航栏高度 */
-  overflow-y: auto;
+  /* 如果你想要左右有留白，请确保是左右对称的 */
+  /* padding: 15px;  */
+  /* 如果不想要留白，就设为 0 */
 }
 
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 65px;
-  background: rgba(255, 255, 255, 0.98);
-  backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
+.main-container.has-footer {
+  /* 确保底部的 padding-bottom 足够大，且左右为 0 或对称 */
+  padding-bottom: 85px; 
+}
+
+
+/* 3. 底部导航：强制固定定位 */
+.tab-bar {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 70px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px); /* 毛玻璃效果 */
   display: flex;
+  align-items: center;
   justify-content: space-around;
-  align-items: center;
-  z-index: 1000;
-  box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.1);
+  border-top: 1px solid #e5e5ea;
+  z-index: 9999;
+  padding-bottom: env(safe-area-inset-bottom); /* 适配全面屏 */
 }
 
-.nav-item {
+.tab-item {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-decoration: none;
-  color: #666;
-  font-size: 11px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  flex: 1;
-  padding: 8px 4px;
-  border-radius: 12px;
-  position: relative;
+  color: #8e8e93;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.nav-item:hover {
-  background: rgba(0, 122, 255, 0.1);
-  /* transform: translateY(-2px); */
-}
+.tab-item .icon { font-size: 20px; margin-bottom: 2px; }
+.tab-item .label { font-size: 11px; }
 
-.nav-item.active {
-  color: #007aff;
-  background: rgba(0, 122, 255, 0.15);
-}
-
-/* .nav-item.active::before {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
-  background: #007aff;
-  border-radius: 50%;
-} */
-
-.nav-icon {
-  font-size: 20px;
-  margin-bottom: 3px;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.nav-item.active .nav-icon {
-  transform: scale(1.1);
-}
-
+/* 激活状态颜色 */
 .router-link-active {
-  color: #007aff;
+  color: #007aff !important;
 }
+
+.logout { color: #ff3b30; cursor: pointer; }
 </style>

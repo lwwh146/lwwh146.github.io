@@ -1,588 +1,341 @@
 <template>
-  <div class="chart">
-    <div class="header">
-      <h1>体重趋势</h1>
-    </div>
-
-    <div class="chart-controls">
-      <div class="time-range-selector">
-        <button
-          v-for="range in timeRanges"
+  <div class="chart-page-container">
+    <header class="page-header">
+      <h1>趋势分析</h1>
+      <div class="time-selector">
+        <button 
+          v-for="range in timeRanges" 
           :key="range.value"
           @click="selectedRange = range.value"
           :class="{ active: selectedRange === range.value }"
-          class="range-btn"
+          :disabled="loading"
         >
           {{ range.label }}
         </button>
       </div>
-    </div>
+    </header>
 
-    <div class="chart-container">
-      <div id="weightChart" class="chart"></div>
-    </div>
-
-    <div class="weight-list">
-      <h2>详细记录</h2>
-      <div class="list-header">
-        <span>日期</span>
-        <span>体重</span>
-        <span>变化</span>
+    <section class="metrics-grid">
+      <div class="metric-card">
+        <span class="m-label">最高体重</span>
+        <div class="m-value">{{ maxWeight || '--' }}<span>斤</span></div>
       </div>
-      <div class="list-content">
-        <div v-for="record in chartData" :key="record.id" class="list-item">
-          <span class="date">{{ formatDate(record.date) }}</span>
-          <span class="weight">{{ record.weight }} 斤</span>
-          <span class="change" :class="getChangeClass(record.change)">
-            {{ formatChange(record.change) }}
-          </span>
-        </div>
+      <div class="metric-card">
+        <span class="m-label">最低体重</span>
+        <div class="m-value highlight">{{ minWeight || '--' }}<span>斤</span></div>
+      </div>
+      <div class="metric-card">
+        <span class="m-label">平均体重</span>
+        <div class="m-value">{{ avgWeight || '--' }}<span>斤</span></div>
+      </div>
+    </section>
+
+    <section class="chart-wrapper">
+      <div class="chart-header">
+        <h2>体重走势图</h2>
+        <span class="chart-unit">单位：斤</span>
       </div>
 
-      <div class="empty-state" v-if="chartData.length === 0">
-        <div class="empty-icon">📊</div>
-        <p>暂无数据，请先记录体重</p>
+      <div class="chart-relative-container">
+        <div v-if="loading" class="chart-loading-overlay">
+          <div class="spinner"></div>
+          <p>分析中...</p>
+        </div>
+        
+        <div id="weightChart" class="main-chart" :style="{ opacity: loading ? 0.3 : 1 }"></div>
       </div>
-    </div>
+    </section>
 
-    <div class="statistics">
-      <h2>统计数据</h2>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">当前体重</div>
-          <div class="stat-value">{{ statistics.currentWeight }} 斤</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">初始体重</div>
-          <div class="stat-value">{{ statistics.startWeight }} 斤</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">总体变化</div>
-          <div
-            class="stat-value"
-            :class="statistics.totalChange >= 0 ? 'increase' : 'decrease'"
-          >
-            {{ statistics.totalChange >= 0 ? "+" : ""
-            }}{{ statistics.totalChange }} 斤
+    <section class="detail-section">
+      <div class="section-title">数据明细</div>
+      <div v-if="chartData.length > 0" class="detail-list">
+        <div v-for="(record) in reversedChartData" :key="record.id" class="detail-item">
+          <div class="d-date">
+            <span class="d-m">{{ formatMonth(record.date) }}</span>
+            <span class="d-d">{{ formatDay(record.date) }}</span>
+          </div>
+          <div class="d-weight">{{ record.weight }} 斤</div>
+          <div class="d-trend" :class="getTrendClass(record)">
+            {{ getTrendText(record) }}
           </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">平均体重</div>
-          <div class="stat-value">{{ statistics.averageWeight }} 斤</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">最高体重</div>
-          <div class="stat-value">{{ statistics.maxWeight }} 斤</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">最低体重</div>
-          <div class="stat-value">{{ statistics.minWeight }} 斤</div>
-        </div>
       </div>
-    </div>
+      <div v-else class="empty-state">暂无区间内数据</div>
+    </section>
   </div>
 </template>
 
 <script>
-import * as echarts from "echarts";
-// import storage from '../utils/storage.js'
 import { supabase } from "../supabase.js";
+import * as echarts from 'echarts';
 
 export default {
-  name: "Chart",
   data() {
     return {
-      chart: null,
-      selectedRange: "7",
+      loading: false,
+      selectedRange: '7',
       timeRanges: [
-        { value: "7", label: "7天" },
-        { value: "30", label: "30天" },
-        { value: "90", label: "3个月" },
-        { value: "180", label: "6个月" },
-        { value: "365", label: "1年" },
+        { label: '7天', value: '7' },
+        { label: '30天', value: '30' },
+        { label: '全部', value: 'all' }
       ],
-      chartData: [],
+      chartData: [], // 原始按时间正序排列的数据（用于图表）
+      myChart: null
     };
   },
   computed: {
-    statistics() {
-      if (this.chartData.length === 0) {
-        return {
-          currentWeight: "--",
-          startWeight: "--",
-          totalChange: "--",
-          averageWeight: "--",
-          maxWeight: "--",
-          minWeight: "--",
-        };
-      }
-
-      const weights = this.chartData.map((record) => record.weight);
-      const currentWeight = weights[weights.length - 1];
-      const startWeight = weights[0];
-      const totalChange = currentWeight - startWeight;
-      const averageWeight = (
-        weights.reduce((sum, weight) => sum + weight, 0) / weights.length
-      ).toFixed(1);
-      const maxWeight = Math.max(...weights);
-      const minWeight = Math.min(...weights);
-
-      return {
-        currentWeight: currentWeight.toFixed(1),
-        startWeight: startWeight.toFixed(1),
-        totalChange: totalChange.toFixed(1),
-        averageWeight,
-        maxWeight: maxWeight.toFixed(1),
-        minWeight: minWeight.toFixed(1),
-      };
+    // 用于列表展示，最新的数据在最前
+    reversedChartData() {
+      return [...this.chartData].reverse();
     },
-  },
-  mounted() {
-    this.loadData();
-    window.addEventListener("resize", this.handleResize); // 统一使用 handleResize
-  },
-  beforeUnmount() {
-    if (this.chart) {
-      this.chart.dispose();
+    maxWeight() {
+      if (!this.chartData.length) return 0;
+      return Math.max(...this.chartData.map(r => r.weight)).toFixed(1);
+    },
+    minWeight() {
+      if (!this.chartData.length) return 0;
+      return Math.min(...this.chartData.map(r => r.weight)).toFixed(1);
+    },
+    avgWeight() {
+      if (!this.chartData.length) return 0;
+      const sum = this.chartData.reduce((acc, r) => acc + r.weight, 0);
+      return (sum / this.chartData.length).toFixed(1);
     }
-    window.removeEventListener("resize", this.handleResize);
   },
   watch: {
     selectedRange() {
-      this.loadData();
-    },
+      this.fetchData();
+    }
+  },
+  async mounted() {
+    await this.fetchData();
+    window.addEventListener('resize', this.handleResize);
+  },
+  beforeUnmount() {
+    window.removeEventListener('resize', this.handleResize);
+    if (this.myChart) this.myChart.dispose();
   },
   methods: {
-    initChart() {
-      // alert("初始化图表");
-      const chartDom = document.getElementById("weightChart");
-      if (!chartDom) return;
-
-      // 如果已经存在实例，先销毁再重建，或者直接使用现有实例
-      if (this.chart) {
-        this.chart.dispose();
-      }
-      this.chart = echarts.init(chartDom);
-    },
-    async loadData() {
+    async fetchData() {
+      this.loading = true;
       try {
-        // 1. 尝试从 Supabase 获取
-        const { data, error } = await supabase
-          .from("weight_logs")
-          .select("*")
-          .order("date", { ascending: true });
-
+        let query = supabase.from("weight_logs").select("*").order("date", { ascending: true });
+        
+        if (this.selectedRange !== 'all') {
+          const date = new Date();
+          date.setDate(date.getDate() - parseInt(this.selectedRange));
+          query = query.gte("date", date.toISOString().split('T')[0]);
+        }
+        
+        const { data, error } = await query;
         if (error) throw error;
-
-        if (data && data.length > 0) {
-          this.renderWithData(data);
-        } else {
-          this.loadMockData("数据库为空，显示演示数据");
-        }
+        
+        this.chartData = data || [];
+        this.$nextTick(() => {
+          this.initChart();
+        });
       } catch (err) {
-        console.warn("本地无法连接数据库，进入演示模式");
-        this.loadMockData("本地演示数据 (数据库连接失败)");
+        console.error("加载失败:", err);
+      } finally {
+        // 增加小延迟防止闪烁
+        setTimeout(() => { this.loading = false; }, 400);
       }
     },
-
-    // 提取渲染逻辑
-    renderWithData(rawData) {
-      this.chartData = rawData
-        .map((item, index) => ({
-          ...item,
-          change:
-            index > 0
-              ? (item.weight - rawData[index - 1].weight).toFixed(1)
-              : 0,
-        }))
-        .reverse();
-
-      this.$nextTick(() => {
-        this.initChart();
-        this.updateChart(); // <<< 必须调用这一步，否则图表是空的
-      });
-    },
-
-    // 模拟数据逻辑
-    loadMockData(note) {
-      // alert(note);
-      const mock = [
-        { id: 1, date: "2025-01-01", weight: 150, note: note },
-        { id: 2, date: "2025-01-05", weight: 148.5, note: note },
-        { id: 3, date: "2025-01-10", weight: 149.2, note: note },
-        { id: 4, date: "2025-01-15", weight: 147.0, note: note },
-      ];
-      this.renderWithData(mock);
-    },
-    updateChart() {
-      if (!this.chart) return;
-
-      const dates = this.chartData.map((record) => record.date);
-      const weights = this.chartData.map((record) => record.weight);
-
-      // 计算y轴最小值：取数据最小值的整数部分
-      let yAxisMin = 0;
-      if (weights.length > 0) {
-        const minWeight = Math.min(...weights);
-        yAxisMin = Math.floor(minWeight);
-        // 如果最小值刚好是整数，再减1留出一些空间
-        if (minWeight === yAxisMin) {
-          yAxisMin = yAxisMin - 1;
-        }
-      }
-
+    initChart() {
+      const chartDom = document.getElementById('weightChart');
+      if (!chartDom) return;
+      if (!this.myChart) this.myChart = echarts.init(chartDom);
+      
       const option = {
-        title: {
-          text: "体重变化趋势",
-          left: "center",
-          textStyle: {
-            fontSize: 18,
-            color: "#333",
-            fontWeight: "bold",
-          },
+        grid: { top: 20, right: 10, bottom: 40, left: 40 },
+        tooltip: { 
+          trigger: 'axis', 
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          textStyle: { color: '#333' }
         },
-        tooltip: {
-          trigger: "axis",
-          backgroundColor: "rgba(0, 0, 0, 0.8)",
-          borderColor: "transparent",
-        },
-        grid: {
-          left: "0%",
-          right: "0%",
-          bottom: "0%",
-          top: "10%",
-          containLabel: true,
-        },
-        xAxis: {
-          type: "category",
-          data: dates,
-          axisLabel: {
-            // rotate: 45,
-            fontSize: 11,
-            color: "#666",
-            formatter: function (value) {
-              const date = new Date(value);
-              return `${date.getMonth() + 1}/${date.getDate()}`;
-            },
-          },
-          axisLine: {
-            lineStyle: {
-              color: "#00000000",
-            },
-          },
-          axisTick: {
-            lineStyle: {
-              color: "#00000000",
-            },
-          },
-        },
+        // 找到这部分代码进行修改
+xAxis: {
+  type: 'category',
+  // 将原来的 formatDay(r.date) 修改为显示 月/日
+  data: this.chartData.map(r => {
+    const d = new Date(r.date);
+    return `${d.getMonth() + 1}/${d.getDate()}`; // 结果类似于 3/2
+  }),
+  axisLine: { lineStyle: { color: '#e5e5ea' } },
+  axisLabel: { 
+    color: '#8e8e93', 
+    fontSize: 10,
+    interval: 'auto', // 自动计算标签显示间隔，防止重叠
+    hideOverlap: true // 自动隐藏重叠的标签
+  }
+},
         yAxis: {
-          type: "value",
-          min: yAxisMin,
-          name: "体重 (斤)",
-          nameTextStyle: {
-            fontSize: 12,
-            color: "#666",
-          },
-          axisLabel: {
-            fontSize: 11,
-            color: "#666",
-          },
-          axisLine: {
-            lineStyle: {
-              color: "#e0e0e0",
-            },
-          },
-          splitLine: {
-            lineStyle: {
-              color: "#f0f0f0",
-              type: "dashed",
-            },
-          },
+          type: 'value',
+          min: 'dataMin',
+          axisLine: { show: false },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f2f2f7' } },
+          axisLabel: { color: '#8e8e93', fontSize: 11 }
         },
-        series: [
-          {
-            name: "体重",
-            type: "line",
-            data: weights,
-            smooth: true,
-            symbol: "circle",
-            symbolSize: 8,
-            lineStyle: {
-              color: "#007aff",
-              width: 3,
-              shadowColor: "rgba(0, 122, 255, 0.3)",
-              shadowBlur: 10,
-              shadowOffsetY: 2,
-            },
-            label: {
-              show: true,
-              position: "top",
-              textStyle: {
-                color: "#007aff",
-              },
-            },
-            itemStyle: {
-              color: "#007aff",
-              borderColor: "#fff",
-              borderWidth: 2,
-              shadowColor: "rgba(0, 122, 255, 0.3)",
-              shadowBlur: 8,
-            },
-            areaStyle: {
-              color: {
-                type: "linear",
-                x: 0,
-                y: 0,
-                x2: 0,
-                y2: 1,
-                colorStops: [
-                  {
-                    offset: 0,
-                    color: "rgba(0, 122, 255, 0.4)",
-                  },
-                  {
-                    offset: 0.5,
-                    color: "rgba(0, 122, 255, 0.2)",
-                  },
-                  {
-                    offset: 1,
-                    color: "rgba(0, 122, 255, 0.05)",
-                  },
-                ],
-              },
-            },
-            emphasis: {
-              itemStyle: {
-                color: "#0056b3",
-                borderColor: "#fff",
-                borderWidth: 3,
-                shadowColor: "rgba(0, 122, 255, 0.5)",
-                shadowBlur: 12,
-              },
-            },
-          },
-        ],
+        series: [{
+          data: this.chartData.map(r => r.weight),
+          type: 'line',
+          smooth: true,
+          symbolSize: 8,
+          label: { show: true, position: 'top', fontSize: 10, color: '#007aff' },
+          itemStyle: { color: '#007aff' },
+          lineStyle: { width: 3, shadowColor: 'rgba(0,122,255,0.3)', shadowBlur: 10 },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(0,122,255,0.2)' },
+              { offset: 1, color: 'rgba(0,122,255,0)' }
+            ])
+          }
+        }]
       };
-
-      this.chart.setOption(option);
+      this.myChart.setOption(option);
     },
+    getTrendClass(record) {
+      // 找到这条记录在原始正序数组中的位置
+      const idx = this.chartData.findIndex(r => r.id === record.id);
+      if (idx <= 0) return '';
+      const diff = record.weight - this.chartData[idx - 1].weight;
+      return diff > 0 ? 'up' : 'down';
+    },
+    getTrendText(record) {
+      const idx = this.chartData.findIndex(r => r.id === record.id);
+      if (idx <= 0) return '--';
+      const diff = record.weight - this.chartData[idx - 1].weight;
+      return diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1);
+    },
+    formatMonth: (d) => new Date(d).getMonth() + 1 + '月',
+    formatDay: (d) => new Date(d).getDate() + '日',
     handleResize() {
-      if (this.chart) {
-        this.chart.resize();
-      }
-    },
-    formatDate(dateStr) {
-      const date = new Date(dateStr);
-      return `${date.getMonth() + 1}/${date.getDate()}`;
-    },
-    formatChange(change) {
-      // 将输入强制转换为数字，如果转换失败则默认为 0
-      const numChange = parseFloat(change) || 0;
-
-      if (numChange === 0) return "0";
-
-      // 只有数字类型才能安全调用 toFixed
-      return `${numChange > 0 ? "+" : ""}${numChange.toFixed(1)}`;
-    },
-    getChangeClass(change) {
-      if (change > 0) return "increase";
-      if (change < 0) return "decrease";
-      return "neutral";
-    },
-  },
+      this.myChart && this.myChart.resize();
+    }
+  }
 };
 </script>
 
 <style scoped>
-.chart {
-  padding: 20px 20px 70px;
-  /* max-width: 600px; */
-  margin: 0 auto;
-  /* flex: 1; */
-  /* display: flex;
-  flex-direction: column; */
+.chart-page-container {
+  padding: 24px 20px;
+  background-color: #f2f2f7;
+  min-height: 100vh;
 }
 
-.header {
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-.header h1 {
-  font-size: 24px;
-  color: #333;
-}
-
-.chart-controls {
-  margin-bottom: 20px;
-}
-
-.time-range-selector {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.range-btn {
-  flex: 1;
-  min-width: 60px;
-  padding: 8px 12px;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.range-btn.active {
-  background: #007aff;
-  color: white;
-  border-color: #007aff;
-}
-
-.chart-container {
-  background: white;
-  border-radius: 12px;
-  padding: 10px;
-  margin-bottom: 30px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.chart {
-  width: 100%;
-  /* height: 350px; */
-}
-
-.statistics {
-  margin-bottom: 30px;
-}
-
-.statistics h2 {
-  font-size: 18px;
-  color: #333;
-  margin: 15px 0;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-@media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.stat-card {
-  background: white;
-  border-radius: 8px;
-  padding: 16px;
-  text-align: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #666;
-  margin-bottom: 8px;
-}
-
-.stat-value {
-  font-size: 18px;
-  font-weight: bold;
-  color: #333;
-}
-
-.stat-value.increase {
-  color: #ff3b30;
-}
-
-.stat-value.decrease {
-  color: #34c759;
-}
-
-.weight-list {
-  background: white;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.weight-list h2 {
-  font-size: 18px;
-  color: #333;
-  margin-bottom: 15px;
-}
-
-.list-header {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid #eee;
-  font-size: 14px;
-  font-weight: 500;
-  color: #666;
-}
-
-.list-header span {
-  flex: 1;
-  text-align: center;
-}
-
-.list-content {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.list-item {
+.page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #f5f5f5;
+  margin-bottom: 24px;
+}
+.page-header h1 { font-size: 24px; color: #1c1c1e; margin: 0; }
+
+/* 时间选择器 */
+.time-selector {
+  background: #e3e3e8;
+  padding: 3px;
+  border-radius: 10px;
+  display: flex;
+}
+.time-selector button {
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  border-radius: 8px;
+  color: #8e8e93;
+  transition: all 0.2s;
+}
+.time-selector button.active {
+  background: white;
+  color: #1c1c1e;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
-.list-item span {
-  flex: 1;
+/* 指标卡片 */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.metric-card {
+  background: white;
+  padding: 12px;
+  border-radius: 18px;
   text-align: center;
-  font-size: 14px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.02);
 }
+.m-label { font-size: 11px; color: #8e8e93; display: block; margin-bottom: 4px; }
+.m-value { font-size: 18px; font-weight: 700; color: #1c1c1e; }
+.m-value span { font-size: 10px; margin-left: 2px; }
+.m-value.highlight { color: #34c759; }
 
-.change.increase {
-  color: #ff3b30;
+/* 图表区域 */
+.chart-wrapper {
+  background: white;
+  border-radius: 24px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
 }
+.chart-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+.chart-header h2 { font-size: 16px; margin: 0; color: #1c1c1e; }
+.chart-unit { font-size: 11px; color: #c7c7cc; }
 
-.change.decrease {
-  color: #34c759;
-}
-
-.change.neutral {
-  color: #666;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: #666;
-}
-
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-
-@media (max-width: 480px) {
-  .chart {
-    /* height: 280px; */
-  }
-}
-#weightChart {
+.chart-relative-container {
+  position: relative;
   width: 100%;
-  height: 280px;
-  padding: 0;
+  height: 220px;
 }
+
+.chart-loading-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(2px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #f2f2f7;
+  border-top: 3px solid #007aff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.main-chart { height: 100%; width: 100%; transition: opacity 0.3s; }
+
+/* 列表区域 */
+.section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: #1c1c1e; }
+.detail-list { background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+.detail-item {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f2f2f7;
+}
+.detail-item:last-child { border-bottom: none; }
+.d-date { display: flex; flex-direction: column; width: 60px; }
+.d-m { font-size: 11px; color: #8e8e93; }
+.d-d { font-size: 16px; font-weight: 600; color: #1c1c1e; }
+.d-weight { flex: 1; font-size: 17px; font-weight: 600; color: #1c1c1e; text-align: center; }
+.d-trend { width: 60px; text-align: right; font-size: 14px; font-weight: 600; color: #8e8e93; }
+.d-trend.up { color: #ff3b30; }
+.d-trend.down { color: #34c759; }
+
+.empty-state { text-align: center; padding: 40px; color: #c7c7cc; font-size: 14px; }
 </style>
