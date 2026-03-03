@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://yordcfhrlrvcvlkvmvft.supabase.co'
+const supabaseUrl = 'https://yordcfhrlrvcvlvkmvft.supabase.co'
 // 这里填入你截图里那个以 sb_publishable_ 开头的 API Key
 const supabaseKey = 'sb_publishable_fD1YyPMV4ZMpTCv5l2iNyw_7E_3kQr9' 
 
