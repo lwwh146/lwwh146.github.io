@@ -1,28 +1,12 @@
 import { createApp } from 'vue'
-import { createRouter, createWebHashHistory } from 'vue-router' // 修改这里
 import App from './App.vue'
-import Home from './views/Home.vue'
-import WeightRecord from './views/WeightRecord.vue'
-import DietRecord from './views/DietRecord.vue'
-import Chart from './views/Chart.vue'
-import DataManager from './views/DataManager.vue'
-import Profile from './views/Profile.vue'
-import Login from './views/Login.vue' // 必须导入登录组件
+import router from './router' // 直接引用你刚才修改好的 router/index.js
+import { supabase } from './supabase'
 
-const routes = [
-  { path: '/', redirect: '/login' },
-  { path: '/login', component: Login },
-  { path: '/home', component: Home },
-  { path: '/weight', component: WeightRecord },
-  { path: '/chart', component: Chart },
-  { path: '/profile', component: Profile }
-]
-
-const router = createRouter({
-  history: createWebHashHistory(), // 修改这里
-  routes
+// 关键修复：只保留这一个挂载逻辑
+// 先等待 Supabase 读取本地存储的 Session 状态
+supabase.auth.getSession().then(() => {
+  const app = createApp(App)
+  app.use(router)
+  app.mount('#app')
 })
-
-const app = createApp(App)
-app.use(router)
-app.mount('#app')

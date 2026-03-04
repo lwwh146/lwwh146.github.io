@@ -1,10 +1,10 @@
 <template>
   <div id="app">
-    <main class="main-container" :class="{ 'has-footer': isLoggedIn }">
+    <main class="main-container" :class="{ 'has-footer': $route.path !== '/login' }">
       <router-view />
     </main>
 
-    <nav v-if="isLoggedIn" class="tab-bar">
+    <nav v-if="$route.path !== '/login'" class="tab-bar">
       <router-link to="/home" class="tab-item">
         <span class="icon">🏠</span>
         <span class="label">首页</span>
@@ -34,24 +34,17 @@ export default {
       isLoggedIn: false
     };
   },
-  created() {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      this.isLoggedIn = !!session;
-    });
+  async created() {
+    const { data: { session } } = await supabase.auth.getSession();
+    this.isLoggedIn = !!session;
 
     supabase.auth.onAuthStateChange((event, session) => {
       this.isLoggedIn = !!session;
+      // 如果退出登录，手动跳回登录页
       if (event === 'SIGNED_OUT') {
         this.$router.push('/login');
       }
     });
-  },
-  methods: {
-    async handleLogout() {
-      if (confirm("确定要退出登录吗？")) {
-        await supabase.auth.signOut();
-      }
-    }
   }
 };
 </script>
@@ -127,6 +120,11 @@ html, body {
 /* 激活状态颜色 */
 .router-link-active {
   color: #007aff !important;
+  font-weight: bold;
+}
+/* 如果你用了图标，也可以让图标变大一点点 */
+.router-link-active .icon {
+  transform: scale(1.1);
 }
 
 .logout { color: #ff3b30; cursor: pointer; }
