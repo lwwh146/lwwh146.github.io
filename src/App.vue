@@ -1,10 +1,10 @@
 <template>
   <div id="app">
-    <main class="main-container" :class="{ 'has-footer': $route.path !== '/login' }">
+    <main class="main-container" :class="{ 'has-footer': showTabBar }">
       <router-view />
     </main>
 
-    <nav v-if="$route.path !== '/login'" class="tab-bar">
+    <nav v-if="showTabBar" class="tab-bar">
       <router-link to="/home" class="tab-item">
         <span class="icon">🏠</span>
         <span class="label">首页</span>
@@ -33,6 +33,12 @@ export default {
     return {
       isLoggedIn: false
     };
+  },
+  computed: {
+    showTabBar() {
+    // 确保包含 /game2048
+    return !['/login', '/game2048'].includes(this.$route.path);
+  }
   },
   async created() {
     const { data: { session } } = await supabase.auth.getSession();

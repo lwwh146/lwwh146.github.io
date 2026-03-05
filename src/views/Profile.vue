@@ -17,6 +17,11 @@
         <span class="menu-value">{{ targetWeight }} 斤</span>
         <span class="edit-btn">修改</span>
       </div>
+      <div class="menu-item game-entry" @click="$router.push('/game2048')">
+        <span class="menu-icon">🎮</span>
+        <span class="menu-title">休闲 2048</span>
+        <span class="edit-btn">去玩玩 ></span>
+      </div>
     </div>
 
     <div class="action-area">
@@ -62,6 +67,9 @@ export default {
 </script>
 
 <style scoped>
+.game-entry {
+  border-top: 1px solid #f2f2f7; /* 加一个淡色分割线 */
+}
 .profile-container {
   padding: 20px;
   background-color: #f2f2f7;

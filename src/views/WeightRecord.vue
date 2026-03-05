@@ -215,7 +215,7 @@ input, textarea {
   background: #f2f2f7; 
   border: 2px solid transparent; 
   border-radius: 12px; 
-  font-size: 16px; 
+  font-size: 14px; 
   color: #1c1c1e; 
   transition: all 0.2s;
   

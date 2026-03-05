@@ -5,6 +5,7 @@ import Home from "../views/Home.vue";
 import Chart from "../views/Chart.vue";
 import WeightRecord from "../views/WeightRecord.vue";
 import Profile from "../views/Profile.vue";
+import Game2048 from "../views/Game2048.vue";
 
 const routes = [
   // 根路径直接指向 home，让守卫去决定是否要踢回 login
@@ -14,6 +15,7 @@ const routes = [
   { path: "/chart", component: Chart },
   { path: "/weight", component: WeightRecord },
   { path: "/profile", component: Profile },
+  { path: "/game2048", component: Game2048 },
 ];
 
 const router = createRouter({
