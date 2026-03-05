@@ -59,14 +59,19 @@
       </div>
       <transition name="fade">
         <div v-if="gameState !== 'playing'" class="game-over-overlay">
-          <h2>{{ gameState === "won" ? "你赢了！🎉" : "游戏结束" }}</h2>
-          <p>最终得分: {{ score }}</p>
-          <div class="overlay-btns">
-            <button @click="resetToNewGame(true)" class="restart-btn">
-              再试一次
-            </button>
-          </div>
-        </div>
+  <h2>{{ gameState === 'won' ? '达成 2048！🎉' : '游戏结束' }}</h2>
+  <p>当前得分: {{ score }}</p>
+  
+  <div class="overlay-btns">
+    <button v-if="gameState === 'won'" @click="continueGame" class="continue-btn">
+      继续挑战
+    </button>
+    
+    <button @click="resetToNewGame(true)" class="restart-btn">
+      {{ gameState === 'won' ? '重新开始' : '再试一次' }}
+    </button>
+  </div>
+</div>
       </transition>
     </div>
 
@@ -97,6 +102,7 @@ export default {
       size: 4,
       board: [],
       score: 0,
+      hasWon: false, // 记录本局是否已经达到过 2048
       highScore: localStorage.getItem("2048_highScore") || 0,
       gameState: "playing", // playing, won, lost
       isDarkMode: localStorage.getItem("2048_darkMode") === "true",
@@ -140,6 +146,9 @@ export default {
     window.removeEventListener("mouseup", this.handleMouseUp);
   },
   methods: {
+    continueGame() {
+    this.gameState = 'playing'; // 关掉遮罩，继续玩
+  },
     async manualSave() {
       if (this.loading) return;
       this.loading = true;
@@ -190,14 +199,26 @@ export default {
     },
 
     resetToNewGame(isManual = false) {
-      this.board = Array(this.size)
-        .fill(0)
-        .map(() => Array(this.size).fill(0));
-      this.score = 0;
-      this.gameState = "playing";
-      this.addRandomTile();
-      this.addRandomTile();
-      if (isManual) this.syncToCloud(); // 💡 手动点击新游戏时覆盖云端
+      // 1. 创建空棋盘
+  this.board = Array(this.size).fill(0).map(() => Array(this.size).fill(0));
+  
+  // 2. 💡 硬编码测试数据：在第一行放两个 1024
+  this.board[0][0] = 1024;
+  this.board[0][1] = 1024;
+  
+  // 3. 也可以顺便测试一下 4096 之后的合成
+  this.board[1][0] = 2048;
+  this.board[1][1] = 2048;
+
+  this.score = 0;
+  this.gameState = 'playing';
+  this.hasWon = false; // 记得重置胜利标记
+  this.previousState = null;
+  this.canUndo = false;
+  
+  // 4. 注释掉随机生成，以免干扰你的测试布局
+  // this.addRandomTile();
+  // this.addRandomTile();
     },
 
     async syncToCloud() {
@@ -359,26 +380,29 @@ export default {
     },
 
     checkGameOver() {
-  // 1. 检查胜利 (2048)
-  for (let r = 0; r < this.size; r++) {
-    for (let c = 0; c < this.size; c++) {
-      if (this.board[r][c] === 2048) {
-        this.gameState = "won";
-        this.updateLeaderboard();
-        this.syncToCloud(); // 💡 关键节点：胜利后自动备份到云端
-        return;
+  // 1. 检查是否有 2048 (胜利节点)
+  if (!this.hasWon) { // 如果还没赢过，才检测 2048
+    for (let r = 0; r < this.size; r++) {
+      for (let c = 0; c < this.size; c++) {
+        if (this.board[r][c] === 2048) {
+          this.gameState = "won"; // 弹出胜利遮罩
+          this.hasWon = true;    // 标记已达标
+          this.updateLeaderboard();
+          this.syncToCloud();
+          return;
+        }
       }
     }
   }
 
-  // 2. 检查空位
+  // 2. 检查是否有空位 (未结束，无论分数值多少)
   for (let r = 0; r < this.size; r++) {
     for (let c = 0; c < this.size; c++) {
       if (this.board[r][c] === 0) return;
     }
   }
 
-  // 3. 检查可合并项
+  // 3. 检查是否还有可合并的相邻格子
   for (let r = 0; r < this.size; r++) {
     for (let c = 0; c < this.size; c++) {
       if (c < this.size - 1 && this.board[r][c] === this.board[r][c + 1]) return;
@@ -386,10 +410,10 @@ export default {
     }
   }
 
-  // 4. 死局结算
+  // 4. 只有真的没法动了，才是真正的死局
   this.gameState = "lost";
   this.updateLeaderboard();
-  this.syncToCloud(); // 💡 关键节点：失败后自动更新云端最高分
+  this.syncToCloud();
 },
 
     undo() {
@@ -486,6 +510,18 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.continue-btn {
+  background: #edc22e; /* 经典的 2048 金色 */
+  color: white;
+  border: none;
+  padding: 12px 25px;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  cursor: pointer;
 }
 
 /* --- 基础容器与变量 --- */
@@ -757,6 +793,85 @@ export default {
   background: linear-gradient(135deg, #edc22e 0%, #ffeb3b 100%);
   animation: pulse 1.5s infinite;
 }
+/* 4096：深邃星云渐变样式 */
+.tile-4096 {
+  background: linear-gradient(135deg, #240b36 0%, #c31432 50%, #240b36 100%) !important;
+  background-size: 200% 200% !important;
+  animation: nebula-move 5s ease infinite !important;
+  color: #ffffff !important;
+  font-size: 26px !important;
+  font-weight: 900 !important;
+  box-shadow: 
+    0 0 20px rgba(147, 51, 234, 0.6), 
+    inset 0 0 15px rgba(255, 255, 255, 0.2) !important;
+  border: none !important;
+  position: relative;
+  overflow: hidden;
+  z-index: 10;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.tile-4096 .tile-inner {
+  animation: epic-glow 2s infinite ease-in-out;
+}
+
+/* 内部的星星闪烁效果 */
+.tile-4096::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: 
+    radial-gradient(1px 1px at 20px 30px, #fff, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 40px 70px, #fff, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 10px 10px, #fff, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 80px 40px, #fff, rgba(0,0,0,0));
+  opacity: 0.4;
+  animation: stars-twinkle 2s infinite alternate;
+}
+
+/* 轨道光环效果 */
+.tile-4096::after {
+  content: "";
+  position: absolute;
+  width: 150%;
+  height: 150%;
+  top: -25%;
+  left: -25%;
+  background: radial-gradient(circle, rgba(147, 51, 234, 0.2) 0%, transparent 70%);
+  animation: pulse-ring 3s infinite ease-in-out;
+}
+
+/* 动画：星云背景流动 */
+@keyframes nebula-move {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 动画：星星闪烁 */
+@keyframes stars-twinkle {
+  from { opacity: 0.2; }
+  to { opacity: 0.8; }
+}
+
+/* 动画：外围光环脉冲 */
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.3; }
+  50% { transform: scale(1.1); opacity: 0.6; }
+  100% { transform: scale(0.8); opacity: 0.3; }
+}
+
+@keyframes epic-glow {
+  0%, 100% {
+    text-shadow: 0 0 5px #ffcc00;
+    transform: scale(1);
+  }
+  50% {
+    text-shadow: 0 0 20px #ffffff, 0 0 30px #ffcc00;
+    transform: scale(1.05); /* 轻微放大，像在呼吸 */
+  }
+}
+
 
 @media (min-width: 500px) {
   .tile-128,
