@@ -93,32 +93,59 @@ export default {
   },
   methods: {
     async fetchData() {
-      this.loading = true;
-      try {
-        const { data, error } = await supabase
-          .from("weight_logs")
-          .select("*")
-          .order("date", { ascending: false })
-          .limit(5);
+  this.loading = true;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-        if (!error && data.length > 0) {
-          this.recentRecords = data;
-          this.latestWeight = data[0].weight;
-          if (data.length > 1) {
-            this.weightChange = data[0].weight - data[1].weight;
-          }
-        }
-      } finally {
-        setTimeout(() => { this.loading = false; }, 500);
+    // 💡 并行获取体重记录和目标体重
+    const [logsResponse, profileResponse] = await Promise.all([
+      supabase.from("weight_logs").select("*").order("date", { ascending: false }).limit(5),
+      supabase.from("user_profiles").select("target_weight").eq("id", user.id).maybeSingle()
+    ]);
+
+    // 处理体重记录
+    if (!logsResponse.error && logsResponse.data.length > 0) {
+      this.recentRecords = logsResponse.data;
+      this.latestWeight = logsResponse.data[0].weight;
+      if (logsResponse.data.length > 1) {
+        this.weightChange = logsResponse.data[0].weight - logsResponse.data[1].weight;
       }
-    },
-    setTargetWeight() {
-      const val = prompt("设置你的目标体重 (斤):", this.targetWeight);
-      if (val && !isNaN(val)) {
-        this.targetWeight = val;
-        localStorage.setItem('target_weight', val);
-      }
-    },
+    }
+
+    // 处理目标体重：数据库优先，没有则读 localStorage，再没有则 120
+    if (profileResponse.data?.target_weight) {
+      this.targetWeight = profileResponse.data.target_weight;
+    } else {
+      this.targetWeight = localStorage.getItem('target_weight') || 120;
+    }
+  } catch (err) {
+    console.error("数据加载失败", err);
+  } finally {
+    setTimeout(() => { this.loading = false; }, 500);
+  }
+},
+    async setTargetWeight() {
+  const val = prompt("设置你的目标体重 (斤):", this.targetWeight);
+  if (val && !isNaN(val)) {
+    const newWeight = parseFloat(val);
+    this.targetWeight = newWeight;
+    
+    // 💡 同步到云端
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { error } = await supabase.from('user_profiles').upsert({
+        id: user.id,
+        target_weight: newWeight,
+        updated_at: new Date()
+      });
+      
+      if (error) alert("云端同步失败，将仅保存在本地");
+    }
+    
+    localStorage.setItem('target_weight', newWeight);
+  }
+},
     formatDate(d) {
       return new Date(d).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
     }

@@ -22,17 +22,25 @@
           <span class="label">BEST</span>
           <span class="value">{{ highScore }}</span>
         </div>
-        
+
         <div class="button-grid">
-          <button @click="undo" class="mini-btn" :disabled="!canUndo" title="撤销">
+          <button
+            @click="undo"
+            class="mini-btn"
+            :disabled="!canUndo"
+            title="撤销"
+          >
             <span class="icon">↺</span>
           </button>
-          <button @click="manualSave" class="mini-btn save" :disabled="loading" title="保存">
-            <span class="icon">{{ loading ? '⌛' : '💾' }}</span>
+          <button
+            @click="manualSave"
+            class="mini-btn save"
+            :disabled="loading"
+            title="保存"
+          >
+            <span class="icon">{{ loading ? "⌛" : "💾" }}</span>
           </button>
-          <button @click="initGame" class="primary-btn-new">
-            新游戏
-          </button>
+          <button @click="handleNewGame" class="primary-btn-new">新游戏</button>
         </div>
       </div>
     </section>
@@ -59,19 +67,23 @@
       </div>
       <transition name="fade">
         <div v-if="gameState !== 'playing'" class="game-over-overlay">
-  <h2>{{ gameState === 'won' ? '达成 2048！🎉' : '游戏结束' }}</h2>
-  <p>当前得分: {{ score }}</p>
-  
-  <div class="overlay-btns">
-    <button v-if="gameState === 'won'" @click="continueGame" class="continue-btn">
-      继续挑战
-    </button>
-    
-    <button @click="resetToNewGame(true)" class="restart-btn">
-      {{ gameState === 'won' ? '重新开始' : '再试一次' }}
-    </button>
-  </div>
-</div>
+          <h2>{{ gameState === "won" ? "达成 2048！🎉" : "游戏结束" }}</h2>
+          <p>当前得分: {{ score }}</p>
+
+          <div class="overlay-btns">
+            <button
+              v-if="gameState === 'won'"
+              @click="continueGame"
+              class="continue-btn"
+            >
+              继续挑战
+            </button>
+
+            <button @click="resetToNewGame(true)" class="restart-btn">
+              {{ gameState === "won" ? "重新开始" : "再试一次" }}
+            </button>
+          </div>
+        </div>
       </transition>
     </div>
 
@@ -147,8 +159,8 @@ export default {
   },
   methods: {
     continueGame() {
-    this.gameState = 'playing'; // 关掉遮罩，继续玩
-  },
+      this.gameState = "playing"; // 关掉遮罩，继续玩
+    },
     async manualSave() {
       if (this.loading) return;
       this.loading = true;
@@ -181,11 +193,11 @@ export default {
             .eq("user_id", user.id)
             .maybeSingle();
 
-          if (save && save.board_data) {
+          if (save && save.board_data && save.board_data.length > 0) {
             this.board = save.board_data;
             this.score = save.current_score;
             this.gameState = "playing";
-            this.loading = false; // 💡 确保这里关闭了
+            this.loading = false;
             return;
           }
         }
@@ -198,27 +210,19 @@ export default {
       this.loading = false;
     },
 
-    resetToNewGame(isManual = false) {
-      // 1. 创建空棋盘
-  this.board = Array(this.size).fill(0).map(() => Array(this.size).fill(0));
-  
-  // 2. 💡 硬编码测试数据：在第一行放两个 1024
-  this.board[0][0] = 1024;
-  this.board[0][1] = 1024;
-  
-  // 3. 也可以顺便测试一下 4096 之后的合成
-  this.board[1][0] = 2048;
-  this.board[1][1] = 2048;
-
-  this.score = 0;
-  this.gameState = 'playing';
-  this.hasWon = false; // 记得重置胜利标记
-  this.previousState = null;
-  this.canUndo = false;
-  
-  // 4. 注释掉随机生成，以免干扰你的测试布局
-  // this.addRandomTile();
-  // this.addRandomTile();
+    resetToNewGame() {
+      // 彻底清空棋盘
+      this.board = Array(this.size).fill(0).map(() => Array(this.size).fill(0));
+      this.score = 0;
+      this.gameState = 'playing';
+      this.hasWon = false;      // 重置胜利标记
+      this.previousState = null;
+      this.canUndo = false;
+      this.mergedPositions = [];
+      
+      // 生成初始方块
+      this.addRandomTile();
+      this.addRandomTile();
     },
 
     async syncToCloud() {
@@ -380,41 +384,44 @@ export default {
     },
 
     checkGameOver() {
-  // 1. 检查是否有 2048 (胜利节点)
-  if (!this.hasWon) { // 如果还没赢过，才检测 2048
-    for (let r = 0; r < this.size; r++) {
-      for (let c = 0; c < this.size; c++) {
-        if (this.board[r][c] === 2048) {
-          this.gameState = "won"; // 弹出胜利遮罩
-          this.hasWon = true;    // 标记已达标
-          this.updateLeaderboard();
-          this.syncToCloud();
-          return;
+      // 1. 检查是否有 2048 (胜利节点)
+      if (!this.hasWon) {
+        // 如果还没赢过，才检测 2048
+        for (let r = 0; r < this.size; r++) {
+          for (let c = 0; c < this.size; c++) {
+            if (this.board[r][c] === 2048) {
+              this.gameState = "won"; // 弹出胜利遮罩
+              this.hasWon = true; // 标记已达标
+              this.updateLeaderboard();
+              this.syncToCloud();
+              return;
+            }
+          }
         }
       }
-    }
-  }
 
-  // 2. 检查是否有空位 (未结束，无论分数值多少)
-  for (let r = 0; r < this.size; r++) {
-    for (let c = 0; c < this.size; c++) {
-      if (this.board[r][c] === 0) return;
-    }
-  }
+      // 2. 检查是否有空位 (未结束，无论分数值多少)
+      for (let r = 0; r < this.size; r++) {
+        for (let c = 0; c < this.size; c++) {
+          if (this.board[r][c] === 0) return;
+        }
+      }
 
-  // 3. 检查是否还有可合并的相邻格子
-  for (let r = 0; r < this.size; r++) {
-    for (let c = 0; c < this.size; c++) {
-      if (c < this.size - 1 && this.board[r][c] === this.board[r][c + 1]) return;
-      if (r < this.size - 1 && this.board[r][c] === this.board[r + 1][c]) return;
-    }
-  }
+      // 3. 检查是否还有可合并的相邻格子
+      for (let r = 0; r < this.size; r++) {
+        for (let c = 0; c < this.size; c++) {
+          if (c < this.size - 1 && this.board[r][c] === this.board[r][c + 1])
+            return;
+          if (r < this.size - 1 && this.board[r][c] === this.board[r + 1][c])
+            return;
+        }
+      }
 
-  // 4. 只有真的没法动了，才是真正的死局
-  this.gameState = "lost";
-  this.updateLeaderboard();
-  this.syncToCloud();
-},
+      // 4. 只有真的没法动了，才是真正的死局
+      this.gameState = "lost";
+      this.updateLeaderboard();
+      this.syncToCloud();
+    },
 
     undo() {
       // 增加 loading 判断，防止在同步时重复点击
@@ -456,6 +463,13 @@ export default {
     formatDate(ts) {
       const d = new Date(ts);
       return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    },
+    handleNewGame() {
+      if (confirm('确定要放弃当前进度开始新游戏吗？')) {
+        this.resetToNewGame();
+        // 立即同步一次空状态到云端，防止刷新页面又读回旧进度
+        this.syncToCloud(); 
+      }
     },
   },
 };
@@ -795,20 +809,25 @@ export default {
 }
 /* 4096：深邃星云渐变样式 */
 .tile-4096 {
-  background: linear-gradient(135deg, #240b36 0%, #c31432 50%, #240b36 100%) !important;
+  background: linear-gradient(
+    135deg,
+    #240b36 0%,
+    #c31432 50%,
+    #240b36 100%
+  ) !important;
   background-size: 200% 200% !important;
   animation: nebula-move 5s ease infinite !important;
   color: #ffffff !important;
   font-size: 26px !important;
   font-weight: 900 !important;
-  box-shadow: 
-    0 0 20px rgba(147, 51, 234, 0.6), 
+  box-shadow:
+    0 0 20px rgba(147, 51, 234, 0.6),
     inset 0 0 15px rgba(255, 255, 255, 0.2) !important;
   border: none !important;
   position: relative;
   overflow: hidden;
   z-index: 10;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .tile-4096 .tile-inner {
@@ -819,12 +838,15 @@ export default {
 .tile-4096::before {
   content: "";
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-image: 
-    radial-gradient(1px 1px at 20px 30px, #fff, rgba(0,0,0,0)),
-    radial-gradient(1px 1px at 40px 70px, #fff, rgba(0,0,0,0)),
-    radial-gradient(2px 2px at 10px 10px, #fff, rgba(0,0,0,0)),
-    radial-gradient(2px 2px at 80px 40px, #fff, rgba(0,0,0,0));
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, #fff, rgba(0, 0, 0, 0)),
+    radial-gradient(1px 1px at 40px 70px, #fff, rgba(0, 0, 0, 0)),
+    radial-gradient(2px 2px at 10px 10px, #fff, rgba(0, 0, 0, 0)),
+    radial-gradient(2px 2px at 80px 40px, #fff, rgba(0, 0, 0, 0));
   opacity: 0.4;
   animation: stars-twinkle 2s infinite alternate;
 }
@@ -837,41 +859,66 @@ export default {
   height: 150%;
   top: -25%;
   left: -25%;
-  background: radial-gradient(circle, rgba(147, 51, 234, 0.2) 0%, transparent 70%);
+  background: radial-gradient(
+    circle,
+    rgba(147, 51, 234, 0.2) 0%,
+    transparent 70%
+  );
   animation: pulse-ring 3s infinite ease-in-out;
 }
 
 /* 动画：星云背景流动 */
 @keyframes nebula-move {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 /* 动画：星星闪烁 */
 @keyframes stars-twinkle {
-  from { opacity: 0.2; }
-  to { opacity: 0.8; }
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 0.8;
+  }
 }
 
 /* 动画：外围光环脉冲 */
 @keyframes pulse-ring {
-  0% { transform: scale(0.8); opacity: 0.3; }
-  50% { transform: scale(1.1); opacity: 0.6; }
-  100% { transform: scale(0.8); opacity: 0.3; }
+  0% {
+    transform: scale(0.8);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0.3;
+  }
 }
 
 @keyframes epic-glow {
-  0%, 100% {
+  0%,
+  100% {
     text-shadow: 0 0 5px #ffcc00;
     transform: scale(1);
   }
   50% {
-    text-shadow: 0 0 20px #ffffff, 0 0 30px #ffcc00;
+    text-shadow:
+      0 0 20px #ffffff,
+      0 0 30px #ffcc00;
     transform: scale(1.05); /* 轻微放大，像在呼吸 */
   }
 }
-
 
 @media (min-width: 500px) {
   .tile-128,
@@ -1034,7 +1081,6 @@ export default {
   opacity: 0;
 }
 
-
 .score-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1.2fr; /* 三列布局 */
@@ -1050,7 +1096,7 @@ export default {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
 }
 
 .button-grid {
@@ -1073,7 +1119,7 @@ export default {
 
 .mini-btn {
   background: var(--panel-bg);
-  border: 1px solid rgba(0,0,0,0.05);
+  border: 1px solid rgba(0, 0, 0, 0.05);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -1086,7 +1132,7 @@ export default {
   color: #42b983; /* 仅图标着色，背景保持统一 */
 }
 
-.mini-btn .icon{
+.mini-btn .icon {
   color: yellow; /* 仅图标着色，背景保持统一 */
 }
 
